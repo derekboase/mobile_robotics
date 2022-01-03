@@ -1,0 +1,7 @@
+<launch>
+ <!-- This is a comment-->
+ <node name="turtleA" pkg="turtlesim" ns="foo" type="turtlesim_node"/>
+
+ <!-- rqt_graph node-->
+ <node name="rqt_graph" pkg="rqt_graph" type="rqt_graph"></node>
+</launch>
