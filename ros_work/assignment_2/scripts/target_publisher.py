@@ -36,6 +36,7 @@ class TargetPublisher:
         self.pub = rospy.Publisher('/turtle1/destination', Pose, queue_size=10)
         self.rate = rospy.Rate(10)
 
+
     def user_input(self):
         """ Prompts user for x and y values. If they are floats and in the range 0 <= x,y <= 11
         it assigns them to the class variable self.pose.x and self.pose.y.
