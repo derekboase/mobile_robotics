@@ -27,8 +27,8 @@ class RandomTrajectory:
     self.point.velocities = [0, 0, 0, 0, 0, 0]
     self.point.accelerations = [0, 0, 0, 0, 0, 0]
     self.point.effort = [0, 0, 0, 0, 0, 0]
-    self.Ts = 1/4
-    self.rate = rospy.Rate(4)
+    self.Ts = 1
+    self.rate = rospy.Rate(1)
 
   def moveJointHome(self):
     self.jointCmd.header.stamp = rospy.Time.now() + rospy.Duration.from_sec(0.0)
@@ -44,13 +44,15 @@ class RandomTrajectory:
   def randomlyUpdateJoints(self):
     self.jointCmd.points = []
     self.jointCmd.header.stamp = rospy.Time.now() + rospy.Duration.from_sec(0.0)
-    self.point.time_from_start = rospy.Duration
+    self.point.time_from_start = rospy.Duration.from_sec(1.0)
     self.current_joints[0] = self.current_joints[0] + uniform(0, 0.05)
     self.point.positions = self.current_joints
     self.jointCmd.points.append(self.point)
+    print('\n##############################################################\n')
     print(self.jointCmd)
+    print('\n##############################################################\n')
     # self.jointCmd.points.positions[0] = self.jointCmd.points.positions[0] + uniform(0, 0.5)
-    print('here')
+
 
 
   def start(self):
