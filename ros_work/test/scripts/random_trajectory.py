@@ -4,101 +4,87 @@
 
 import numpy as np
 import rospy
-# import time
+import time
 from trajectory_msgs.msg import JointTrajectoryPoint
 from trajectory_msgs.msg import JointTrajectory
 # from std_srvs.srv import Empty
-from numpy import cos, sin
 # from random import uniform
 
-def forward_matrix(params):
-    ct = cos(params[0])
-    st = sin(params[0])
-    ca = cos(params[3])
-    sa = sin(params[3])
-    ai = params[2]
-    di = params[1]
-    return np.array([[ct, -st*ca, st*sa, ai*ct],
-                     [st, ct*ca, -ct*sa, ai*st],
-                     [0, sa, ca, di],
-                     [0, 0, 0, 1]])
-
-
-def cartesian_from_joint(_DH_Params):
-    rob_T_end = np.array([[1, 0, 0, 0],
-                          [0, -1, 0, 0],
-                          [0, 0, -1, 0],
-                          [0, 0, 0, 1]])
-    for _params in _DH_Params:
-        rob_T_end = np.matmul(rob_T_end, forward_matrix(_params))
-    return rob_T_end
-
-
-def physical_to_algo(q):
-    '''
-    This function accepts as it's inputs a list of the physical angles that are applied
-    to the true joints of the manipulator arm and returns the values for the DH table
-    :param q: physical angles
-    :return: virtual (DH) angles
-    '''
-    return [q[0] - np.deg2rad(180),
-            q[1] + np.deg2rad(90),
-            q[2] + np.deg2rad(90),
-            q[3],
-            q[4],
-            q[5] - np.deg2rad(90)]
-
-
 class RandomTrajectory:
-    def __init__(self, home_joints):
-        self.current_joints = home_joints
+    def __init__(self, home_joints, freq=10.0, runtime=10.0):
+        # All the setup stuff for the nodes and topics
         self.topic_name = '/j2s6s300/effort_joint_trajectory_controller/command'
         self.pub = rospy.Publisher(self.topic_name, JointTrajectory, queue_size=1)
+        # Instantiation of messages and names
         self.jointCmd = JointTrajectory()
         self.point = JointTrajectoryPoint()
-        self.jointCmd.joint_names = ['j2n6s300_joint_1',
-                                     'j2n6s300_joint_2',
-                                     'j2n6s300_joint_3',
-                                     'j2n6s300_joint_4',
-                                     'j2n6s300_joint_5',
-                                     'j2n6s300_joint_6']
-        self.point.positions = home_joints
-        # self.point.velocities = [0, 0, 0, 0, 0, 0]
-        self.point.velocities = []
-        # self.point.accelerations = [0.01, 0, 0, 0, 0, 0]
-        self.point.accelerations = []
-        self.point.effort = [0, 0, 0, 0, 0, 0]
-        # self.point.effort = []
-        self.Ts = 1/10.0
-        self.rate = rospy.Rate(10)
-        self.t = np.arange(5*1/self.Ts)   # 5 seconds * samples / second
-        self.joint_1_setpoints = 0.1 * self.t
-        self.idx = 1
+        self.jointCmd.joint_names = ['j2s6s300_joint_1',
+                                     'j2s6s300_joint_2',
+                                     'j2s6s300_joint_3',
+                                     'j2s6s300_joint_4',
+                                     'j2s6s300_joint_5',
+                                     'j2s6s300_joint_6']
+
+        # Setting initial values to the point message
+        self.current_joints = home_joints
+        self.point.positions = self.current_joints
+        self.point.velocities = [0, 0, 0, 0, 0, 0]
+        self.point.accelerations = [0, 0, 0, 0, 0, 0]
+        self.point.effort = []
+
+        # All the time related information
+        self.Ts = 1/freq
+        self.rate = rospy.Rate(freq)
+        self.end_time = runtime
+
+        # Joint instances and index
+        self.j1_traj = []
+        self.j2_traj = []
+        self.j3_traj = []
+        self.j4_traj = []
+        self.j5_traj = []
+        self.j6_traj = []
+        self.idx = 0
+
+    def trajectory_calculator(self):
+        # Trajectory points
+        _time = np.arange(0, self.end_time + self.Ts, step=self.Ts)
+        _tau = 3
+        for t in _time:
+            if t <= self.end_time/2:
+                self.j1_traj.append(np.pi * (1 - np.exp(-_tau * t / np.pi)))
+            else:
+                self.j1_traj.append(np.pi * np.exp(-_tau * (t - 5) / np.pi))
 
     def moveJointHome(self):
         self.jointCmd.header.stamp = rospy.Time.now() + rospy.Duration.from_sec(0.0)
         self.point.time_from_start = rospy.Duration.from_sec(10.0)
         self.jointCmd.points.append(self.point)
         count = 0
-        while count < 110:
+        while count < (self.end_time + 1)*1/self.Ts:  # Make sure it has enough time to find home position
             self.pub.publish(self.jointCmd)
             count = count + 1
             self.rate.sleep()
-        print('Done')
 
-    # def randomlyUpdateJoints(self):
-    #     self.jointCmd.points = []
-    #     self.jointCmd.header.stamp = rospy.Time.now() + rospy.Duration.from_sec(0.0)
-    #     self.point.time_from_start = rospy.Duration.from_sec(self.Ts*1.1)
-    #     self.current_joints[0] = self.joint_1_setpoints[self.idx]
-    #     self.point.positions = self.current_joints
-    #     # self.point.velocities[0] = delta_joint / self.Ts
-    #     self.jointCmd.points.append(self.point)
-    #     print('\n##############################################################\n')
-    #     print(self.jointCmd)
-    #     print('\n##############################################################\n')
-    #     # self.jointCmd.points.positions[0] = self.jointCmd.points.positions[0] + uniform(0, 0.5)
-    #     self.idx = self.idx + 1
+    def nominal_trajectory(self):
+        for self.idx, j1 in enumerate(self.j1_traj):
+            self.jointCmd.points = []
+            self.jointCmd.header.stamp = rospy.Time.now() + rospy.Duration.from_sec(0.0)
+            self.point.time_from_start = rospy.Duration.from_sec(self.Ts)
+            # This is where the calcualtion of the changes will go
+            self.point.velocities[0] = (j1 - self.current_joints[0]) / self.Ts
+            self.point.accelerations[0] = self.point.velocities[0] / self.Ts
+            self.current_joints[0] = j1
+            self.point.positions = self.current_joints
+            self.jointCmd.points.append(self.point)
+            # print(self.point)
+            # while True:
+            #     pass
+            # print(self.jointCmd)
+            self.pub.publish(self.jointCmd)
+            self.rate.sleep()
+            self.idx += 1
+
 
     def start(self):
         """(self) -> None
@@ -107,57 +93,27 @@ class RandomTrajectory:
         """
         self.moveJointHome()
         while not rospy.is_shutdown():
-            # self.randomlyUpdateJoints()
-            self.pub.publish(self.jointCmd)
-            self.rate.sleep()
+            self.nominal_trajectory()
+
 
 
 if __name__ == '__main__':
-    # Geometric constants from data sheet
-    D1, D2, D3, D4, D5, D6 = (0.2755, 0.4100, 0.2073, 0.1038, 0.1038, 0.1600)  # Values in m
-    e2 = 0.0098  # Value in m
+    try:
+        rospy.init_node('move_robot_using_trajectory_msg')
+        # prefix, nbJoints, nbfingers = 'j2s6s300', 6, 3
+        #allow gazebo to launch
+        time.sleep(2)
 
-    # The below are only used for curved wrist
-    # aa = (30.0 * np.pi) / 180.0
-    # sa = sin(aa)
-    # s2a = sin(2 * aa)
-    # d4b = D3 + (sa / s2a) * D4
-    # d5b = (sa / s2a) * D4 + (sa / s2a) * D5
-    # db6 = (sa / s2a) * D5 + D6
+        # Unpause the physics
+        # rospy.wait_for_service('/gazebo/unpause_physics')
+        # unpause_gazebo = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
+        # resp = unpause_gazebo()
+          # Move the arm to it's home position
 
-    Q = physical_to_algo([0.0, 2.7, 1.3, 4.2, 1.4, 0.0])
-    # Q = physical_to_algo(np.deg2rad([180, 270, 90, 270, 270, 270]))
+        rt = RandomTrajectory([0.0, 2.7, 1.3, 4.2, 1.4, 0.0])
+        # rt = RandomTrajectory(np.deg2rad([180, 270, 90, 270, 270, 270]))
+        rt.trajectory_calculator()
+        rt.start()
 
-    DH_Params = [[Q[0], D1, 0, np.pi/2],
-                 [Q[1], 0, D2, np.pi],
-                 [Q[2], -e2, 0, np.pi/2],
-                 [Q[3], -(D3 + D4), 0, np.pi/2],
-                 [Q[4], 0, 0, np.pi/2],
-                 [Q[5], -(D5 + D6), 0, np.pi]]
-
-    # cartesian_from_joint(DH_Params)
-    print(cartesian_from_joint(DH_Params))
-
-    # try:
-    #   rospy.init_node('move_robot_using_trajectory_msg')
-    #   prefix, nbJoints, nbfingers = 'j2s6s300', 6, 3
-    #   #allow gazebo to launch
-    #   time.sleep(2)
-    #
-    #   # Unpause the physics
-    #   rospy.wait_for_service('/gazebo/unpause_physics')
-    #   unpause_gazebo = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
-    #   resp = unpause_gazebo()
-    #   # Move the arm to it's home position
-    #
-    #   rt = RandomTrajectory([0.0, 2.7, 1.3, 4.2, 1.4, 0.0])
-    #   # rt = RandomTrajectory([np.deg2rad(180),
-    #   #                        np.deg2rad(270),
-    #   #                        np.deg2rad(90),
-    #   #                        np.deg2rad(180),
-    #   #                        np.deg2rad(180),
-    #   #                        np.deg2rad(0)])
-    #   rt.start()
-    #
-    # except rospy.ROSInterruptException:
-    # print "program interrupted before completion"
+    except rospy.ROSInterruptException:
+        print "program interrupted before completion"
