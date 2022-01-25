@@ -10,6 +10,7 @@ from trajectory_msgs.msg import JointTrajectory
 # from std_srvs.srv import Empty
 # from random import uniform
 
+
 class RandomTrajectory:
     def __init__(self, home_joints, freq=10.0, runtime=10.0):
         # All the setup stuff for the nodes and topics
@@ -45,6 +46,11 @@ class RandomTrajectory:
         self.j5_traj = []
         self.j6_traj = []
         self.idx = 0
+
+        # Algorithm variables
+        self.Error_1 = np.zeros((3, 1))
+        self.Theta_c1 = np.zeros((1, 3))
+        self.Theta_a1 = np.zeros((1, 3))
 
     def trajectory_calculator(self):
         # Trajectory points
@@ -84,6 +90,11 @@ class RandomTrajectory:
             self.pub.publish(self.jointCmd)
             self.rate.sleep()
             self.idx += 1
+
+    def signal_update(self):
+
+
+        return self.Theta_c1, self.Theta_a2
 
 
     def start(self):
