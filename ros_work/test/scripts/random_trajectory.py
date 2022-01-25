@@ -7,6 +7,7 @@ import rospy
 import time
 from trajectory_msgs.msg import JointTrajectoryPoint
 from trajectory_msgs.msg import JointTrajectory
+from sensor_msgs.msg import JointState
 # from std_srvs.srv import Empty
 # from random import uniform
 
@@ -56,7 +57,12 @@ class RandomTrajectory:
         self.j4_traj = []
         self.j5_traj = []
         self.j6_traj = []
+
+        self.actual_positions = np.zeros(1, 6)
+        self.actual_velocities = np.zeros(1, 6)
+
         self.idx = 0
+
 
     def trajectory_calculator(self):
         """
@@ -71,6 +77,10 @@ class RandomTrajectory:
                 self.j1_traj.append(np.pi * (1 - np.exp(-_tau * t / np.pi)))
             else:
                 self.j1_traj.append(np.pi * np.exp(-_tau * (t - 5) / np.pi))
+
+    def actual_values(self, real_joint_angles):
+        self.actual_positions = np.array(real_joint_angles.position[0:6])
+        self.actual_velocities = np.array(real_joint_angles.velocity[0:6])
 
     def moveJointHome(self):
         """
@@ -110,32 +120,41 @@ class RandomTrajectory:
         self.point.positions = self.current_joints
         self.jointCmd.points.append(self.point)
 
-    # def signal_update(self):
-    #     # Variables
-    #     _N = self.end_time / self.Ts
-    #     zeta_actor = 1  ## THIS IS NOT A REASONABLE VALUE
-    #     zeta_critic = 1  ## THIS IS NOT A REASONABLE VALUE
-    #     Q = np.array([])
-    #     R = np.array([])
-    #     delta_conv, window_conv = 1e-2, _N/10
-    #
-    #     Error_1 = np.zeros((3, 1))  # Step 1.1 for Joint 1 Position
-    #     _Wc_1 = generate_SPD_matrix(4)  # Step 1.2 for Joint 1 Position
-    #     _Wa_1 = -np.matmul(1/_Wc_1[3][3], _Wc_1[3][0:3])  # Step 1.3 for Joint 1 Position
-    #     # Step 2 for Joint 1 Position is done in the setup self.j1_traj at the next index
-    #     _k, _weights_conv = 0, False  # Step 3 and 4 for Joint 1 Position
-    #     while _k < _N and not _weights_conv:
-    #         # Calculate the control signal: Step 6 for Joint 1 Position
-    #         u_pi = np.matmul(_Wa_1, Error_1)
-    #
-    #         # Calculate next error: Step 7 for Joint 1 Position
-    #
-    #         # Find V and U: Step 8 for Joint 1 Position
-    #
-    #         # Get E(k + 1)
-    #
-    #         pass
-    #     return _Wc_1, _Wa_1
+    def signal_update(self):
+        # Variables
+        _N = self.end_time / self.Ts
+        zeta_actor = 1  ## THIS IS NOT A REASONABLE VALUE
+        zeta_critic = 1  ## THIS IS NOT A REASONABLE VALUE
+        Q = generate_SPD_matrix(4)
+        R = generate_SPD_matrix(1)
+        delta_conv, window_conv = 1e-2, _N/10
+
+        _error_1 = np.zeros((3, 1))  # Step 1.1 for Joint 1 Position
+        _Wc_1 = generate_SPD_matrix(4)  # Step 1.2 for Joint 1 Position
+        _Wa_1 = -np.matmul(1/_Wc_1[3][3], _Wc_1[3][0:3])  # Step 1.3 for Joint 1 Position
+        # Step 2 for Joint 1 Position is done in the setup self.j1_traj at the next index
+        _k, _weights_conv = 0, False  # Step 3 and 4 for Joint 1 Position
+        while _k < _N and not _weights_conv:
+            # Calculate the control signal: Step 6 for Joint 1 Position
+            u_pi = np.matmul(_Wa_1, _error_1)
+            next_tar = np.array(self.current_joints)
+            next_tar[0] += u_pi
+            self.update_target(next_tar)
+            self.pub.publish(self.jointCmd)
+            self.rate.sleep()
+            # Find V and U: Step 8 for Joint 1 Position
+            Eu_concat = np.concatenate((_error_1, u_pi.reshape(-1, 1)), axis=0)
+            Eu_transpose = np.transpose(Eu_concat)
+            V = 1/2 * np.matmul(np.matmul(Eu_transpose, _Wc_1), Eu_concat)
+            E_transpose = np.transpose(_error_1)
+            U = 1/2 * (np.matmul(np.matmul(E_transpose, Q), _error_1) + np.square(u_pi)*R)
+            # Get E(k + 1)
+            _error_1[2] = _error_1[1]
+            _error_1[1] = _error_1[0]
+            _error_1[0] = self.j1_traj[_k + 1] - self.actual_positions[0]
+
+            pass
+        return _Wc_1, _Wa_1
 
 
     def start(self):
@@ -143,10 +162,11 @@ class RandomTrajectory:
         Main loop that controls the flow of the program. The robot arm is moved to the home
         position first and then the joint(s) are updated randomly from there.
         """
+        rospy.Subscriber('/j2s6s300/joint_states', JointState, self.actual_values)
         self.moveJointHome()
         while not rospy.is_shutdown():
-            self.nominal_trajectory()
-            # pass
+            # self.nominal_trajectory()
+            pass
 
 
 if __name__ == '__main__':
@@ -162,7 +182,8 @@ if __name__ == '__main__':
         # resp = unpause_gazebo()
           # Move the arm to it's home position
 
-        rt = RandomTrajectory([0.0, 2.7, 1.3, 4.2, 1.4, 0.0])
+        # rt = RandomTrajectory([0.0, 2.7, 1.3, 4.2, 1.4, 0.0])
+        rt = RandomTrajectory([0.0, 2.0, 1.3, 4.2, 1.4, 0.0])
         # rt = RandomTrajectory(np.deg2rad([180, 270, 90, 270, 270, 270]))
         rt.trajectory_calculator()
         rt.start()
