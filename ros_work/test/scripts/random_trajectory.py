@@ -29,17 +29,17 @@ def bound(low, high, val):
 class RandomTrajectory:
     def __init__(self, home_joints, freq=10.0, runtime=10.0):
         # All the setup stuff for the nodes and topics
-        self.topic_name = '/j2s6s300/effort_joint_trajectory_controller/command'
+        self.topic_name = '/j2s6s200/effort_joint_trajectory_controller/command'
         self.pub = rospy.Publisher(self.topic_name, JointTrajectory, queue_size=1)
         # Instantiation of messages and names
         self.jointCmd = JointTrajectory()
         self.point = JointTrajectoryPoint()
-        self.jointCmd.joint_names = ['j2s6s300_joint_1',
-                                     'j2s6s300_joint_2',
-                                     'j2s6s300_joint_3',
-                                     'j2s6s300_joint_4',
-                                     'j2s6s300_joint_5',
-                                     'j2s6s300_joint_6']
+        self.jointCmd.joint_names = ['j2s6s200_joint_1',
+                                     'j2s6s200_joint_2',
+                                     'j2s6s200_joint_3',
+                                     'j2s6s200_joint_4',
+                                     'j2s6s200_joint_5',
+                                     'j2s6s200_joint_6']
 
         # Setting initial values to the point message
         self.current_joints = home_joints
@@ -76,11 +76,12 @@ class RandomTrajectory:
         _tau = 3
         _amplitude = np.pi
         for t in _time:
-            # if t <= self.end_time/2:
-            #     self.j1_traj.append(_amplitude * (1 - np.exp(-_tau * t / np.pi)))
-            # else:
-            #     self.j1_traj.append(_amplitude * np.exp(-_tau * (t - self.end_time/2) / np.pi))
-            self.j1_traj.append(np.pi/2)
+            if t <= self.end_time*4/5:
+                # self.j1_traj.append(_amplitude * (1 - np.exp(-_tau * t / np.pi)))
+                self.j1_traj.append(np.pi/4)
+            else:
+                # self.j1_traj.append(_amplitude * np.exp(-_tau * (t - self.end_time/2) / np.pi))
+                self.j1_traj.append(0)
 
     def actual_values(self, real_joint_angles):
         self.actual_positions = np.array(real_joint_angles.position[0:6])
@@ -92,14 +93,16 @@ class RandomTrajectory:
         :return:
         """
         time_to_home = 3.0
+        self.rate = rospy.Rate(10.0)
         self.jointCmd.header.stamp = rospy.Time.now() + rospy.Duration.from_sec(0.0)
         self.point.time_from_start = rospy.Duration.from_sec(time_to_home)
         self.jointCmd.points.append(self.point)
         count = 0
-        while count < (time_to_home + 1)*1/self.Ts:  # Make sure it has enough time to find home position
+        while count < (time_to_home + 1)*1/0.1:  # Make sure it has enough time to find home position
             self.pub.publish(self.jointCmd)
             count = count + 1
             self.rate.sleep()
+        self.rate = rospy.Rate(1/self.Ts)
 
     def nominal_trajectory(self):
         for self.idx, j1 in enumerate(self.j1_traj):
@@ -145,41 +148,41 @@ class RandomTrajectory:
 
         next_tar = np.array(self.current_joints)  # load the next target variable with the current joints
         while _k < _N and not _weights_conv:
-            # Calculate the control signal: Step 6 for Joint 1 Position
-            _u_hat = bound(-0.35, 0.35, float(np.matmul(_Wa_1, _E_k)))  # shape(1,)
-            next_tar[0] += _u_hat  # shape(1,)
-            self.update_target(next_tar)
-            self.algorithm.append(self.actual_positions[0])  # For the sole purpose of
-            self.pub.publish(self.jointCmd)  # Publish the
-            self.rate.sleep()
+                # Calculate the control signal: Step 6 for Joint 1 Position
+                _u_hat = bound(-0.35, 0.35, float(np.matmul(_Wa_1, _E_k)))  # shape(1,)
+                next_tar[0] += _u_hat  # shape(1,)
+                self.update_target(next_tar)
+                self.algorithm.append(self.actual_positions[0])  # For the sole purpose of
+                self.pub.publish(self.jointCmd)  # Publish the
+                self.rate.sleep()
 
-            # Find V and U: Step 8 for Joint 1 Position
-            Eu_concat = np.concatenate((_E_k, _u_hat.reshape(-1, 1)), axis=0)
-            Eu_transpose = np.transpose(Eu_concat)
-            _V_k = 1/2.0 * np.matmul(np.matmul(Eu_transpose, _Wc_1), Eu_concat)
-            E_transpose = np.transpose(_E_k)
-            _U_k = 1/2.0 * (np.matmul(np.matmul(E_transpose, Q), _E_k) + _u_hat*R*_u_hat)
+                # Find V and U: Step 8 for Joint 1 Position
+                Eu_concat = np.concatenate((_E_k, _u_hat.reshape(-1, 1)), axis=0)
+                Eu_transpose = np.transpose(Eu_concat)
+                _V_k = 1/2.0 * np.matmul(np.matmul(Eu_transpose, _Wc_1), Eu_concat)
+                E_transpose = np.transpose(_E_k)
+                _U_k = 1/2.0 * (np.matmul(np.matmul(E_transpose, Q), _E_k) + _u_hat*R*_u_hat)
 
-            # Get E(k + 1), u_hat and V(k_1): Step 9 for Joint 1 Position
-            _E_k1[2] = _E_k[1]
-            _E_k1[1] = _E_k[0]
-            _E_k1[0] = self.j1_traj[_k + 1] - self.actual_positions[0]
-            _u_hat_k1 = bound(-0.35, 0.35, float(np.matmul(_Wa_1, _E_k1)))  # shape(1,)
-            _Z = np.concatenate((_E_k1, _u_hat_k1.reshape(-1, 1)), axis=0)
-            _Z_trans = np.transpose(_Z)
-            _V_k1 = 1/2.0*np.matmul(np.matmul(_Z_trans, _Wc_1), _Z)
+                # Get E(k + 1), u_hat and V(k_1): Step 9 for Joint 1 Position
+                _E_k1[2] = _E_k[1]
+                _E_k1[1] = _E_k[0]
+                _E_k1[0] = self.j1_traj[_k + 1] - self.actual_positions[0]
+                _u_hat_k1 = bound(-0.35, 0.35, float(np.matmul(_Wa_1, _E_k1)))  # shape(1,)
+                _Z = np.concatenate((_E_k1, _u_hat_k1.reshape(-1, 1)), axis=0)
+                _Z_trans = np.transpose(_Z)
+                _V_k1 = 1/2.0*np.matmul(np.matmul(_Z_trans, _Wc_1), _Z)
 
-            # Update critic weights: Step 11 for Joint 1 Position
-            temp = _zeta_critic*(_V_k - (_U_k + _V_k1))
-            # temp = _zeta_critic*(_V_k - (_U_k + _V_k1))
-            _Wc_1 -= temp*np.matmul(_Z, _Z_trans)
+                # Update critic weights: Step 11 for Joint 1 Position
+                temp = _zeta_critic*(_V_k - (_U_k + _V_k1))
+                # temp = _zeta_critic*(_V_k - (_U_k + _V_k1))
+                _Wc_1 -= temp*np.matmul(_Z, _Z_trans)
 
-            # Update actor weights: Step 12 for Joint 1 Position
-            _Wa_1 -= _zeta_actor*(np.matmul(_Wa_1, _E_k) - (-1/_Wc_1[3][3]*np.matmul(_Wc_1[3][0:3], _E_k)))*E_transpose
+                # Update actor weights: Step 12 for Joint 1 Position
+                _Wa_1 -= _zeta_actor*(np.matmul(_Wa_1, _E_k) - (-1/_Wc_1[3][3]*np.matmul(_Wc_1[3][0:3], _E_k)))*E_transpose
 
-            # Updates
-            _E_k = _E_k1
-            _k += 1
+                # Updates
+                _E_k = _E_k1
+                _k += 1
 
         return _Wc_1, _Wa_1
 
@@ -188,7 +191,7 @@ class RandomTrajectory:
         Main loop that controls the flow of the program. The robot arm is moved to the home
         position first and then the joint(s) are updated randomly from there.
         """
-        rospy.Subscriber('/j2s6s300/joint_states', JointState, self.actual_values)
+        rospy.Subscriber('/j2s6s200/joint_states', JointState, self.actual_values)
         self.moveJointHome()
         # print("******************************************************************")
         # print("\t\t\tNominal Motion")
@@ -199,8 +202,8 @@ class RandomTrajectory:
         print("******************************************************************")
         self.signal_update()
         t = np.arange(0, self.end_time + self.Ts, step=self.Ts)
-        plt.plot(t, self.j1_traj)
-        plt.plot(t[1:], self.algorithm)
+        plt.plot(2*t, self.j1_traj)
+        plt.plot(2*t[1:], self.algorithm)
         plt.legend(['nominal', 'actual'])
         plt.show()
 
@@ -213,7 +216,6 @@ class RandomTrajectory:
 if __name__ == '__main__':
     try:
         rospy.init_node('move_robot_using_trajectory_msg')
-        # prefix, nbJoints, nbfingers = 'j2s6s300', 6, 3
         # allow gazebo to launch
         time.sleep(2)
 
@@ -222,8 +224,8 @@ if __name__ == '__main__':
         # unpause_gazebo = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         # resp = unpause_gazebo()
 
-        rt = RandomTrajectory([0.0, 2.7, 1.3, 4.2, 1.4, 0.0])
-        # rt = RandomTrajectory([0.0, 2.0, 1.3, 4.2, 1.4, 0.0])
+        rt = RandomTrajectory([0.0, 2.9, 1.3, -2.1, 1.4, 0.0], freq=2.0, runtime=60.0)
+        # rt = RandomTrajectory([0.0, 2.0, 1.3, -2.1, 1.4, 0.0], freq=2.0, runtime=60.0)
         # rt = RandomTrajectory(np.deg2rad([180, 270, 90, 270, 270, 270]))
         rt.trajectory_calculator()
         rt.start()
