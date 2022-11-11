@@ -102,7 +102,7 @@ class RobotNaviation:
             self.vel.linear.x = (curr_pose.x - self.e) * 0.025
             self.vel.angular.z = -np.deg2rad(curr_pose.theta) * 0.75
         else:
-            self.vel.linear.x = (curr_pose.x - self.e) * 1.5
+            self.vel.linear.x = (curr_pose.x - self.e) * 0.5
             self.vel.angular.z = -np.deg2rad(curr_pose.theta) * 0.5
 
     def circumvent_object(self, curr_pose):
@@ -125,7 +125,7 @@ class RobotNaviation:
         _y_laser = self.husky_pose.pose.pose.position.y + self.BASE_LINK_LASER_OFF * np.sin(self.yaw)
         if not self.circumventing:
             self.x_init, self.y_init = _x_laser, _y_laser
-            print('Initial point that must be reached ({0},{1})').format(self.x_init, self.y_init)
+            print 'Initial point that must be reached ({0},{1})'.format(self.x_init, self.y_init)
             self.circumventing = True
         if (curr_pose.x - self.e) > self.e * 2:
             self.circumventing = False
@@ -171,7 +171,8 @@ class RobotNaviation:
             # This is redundant, I don't need it, but it was here for my testing so Im going to leave it here to avoid
             # introducing and error.
             self.halt_motion()
-            print('ARRIVED!\nDestination ({0},{1})\nCurrent: ({2},{3})').format(self.x_init, self.y_init, _x_laser, _y_laser)
+            print 'ARRIVED!\nDestination ({0},{1})\nCurrent: ({2},{3})'\
+                .format(self.x_init, self.y_init, _x_laser, _y_laser)
 
     def start(self):
         # Here for program flow.
